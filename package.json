@@ -1,0 +1,18 @@
+{
+  "name": "question-crawler",
+  "version": "0.0.1",
+  "main": "index.js",
+  "repository": "git@github.com:jd2566/question-crawler.git",
+  "author": "jd2566 <bolinli2566@gmail.com>",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "mongoose": "^5.11.12",
+    "nodemon": "^2.0.7",
+    "puppeteer": "^5.5.0"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "main": "node findMainCategories.js",
+    "debug": "npx ndb nodemon --inspect index.js"
+  }
+}
