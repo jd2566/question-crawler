@@ -6,6 +6,7 @@
   "author": "jd2566 <bolinli2566@gmail.com>",
   "license": "Apache-2.0",
   "dependencies": {
+    "dotenv": "^8.2.0",
     "mongoose": "^5.11.12",
     "nodemon": "^2.0.7",
     "puppeteer": "^5.5.0"
