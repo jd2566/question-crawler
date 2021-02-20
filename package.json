@@ -11,8 +11,8 @@
     "puppeteer": "^5.5.0"
   },
   "scripts": {
-    "start": "node index.js",
-    "main": "node findMainCategories.js",
+    "get": "node getMainCategories.js",
+    "process": "node processMainPages.js",
     "debug": "npx ndb nodemon --inspect index.js"
   }
 }
