@@ -12,18 +12,6 @@ process.on("uncaughtException", (err) => {
   process.exit(1); //mandatory (as per the Node docs)
 });
 
-async function clickAll(page) {
-  await page.$$eval(toggleElm, (triggers) => {
-    triggers.forEach(async (t, index) => {
-      await new Promise(function (resolve) {
-        setTimeout(resolve, index * 3000);
-      });
-      const name = t.getAttribute("data-ct-title");
-      console.log(`${name} - ${index + 1}`);
-      await t.click();
-    });
-  });
-}
 const user = process.env.MONGO_USER;
 const pass = process.env.MONGO_PASSWORD;
 const host = process.env.MONGO_HOST;
@@ -45,6 +33,8 @@ db.once("open", async function () {
     const mainCategories = JSON.parse(data);
     const categories = Object.keys(mainCategories);
     const urls = Object.values(mainCategories);
+
+    initCategories(categories);
 
     const url = urls[0];
 
@@ -81,42 +71,34 @@ db.once("open", async function () {
   }
 });
 
-//const mainCategoryFile = "./results/MainCategories.json";
-//if (fs.access(mainCategoryFile)) {
-//  const data = await fs.readFile(mainCategoryFile, "utf8");
-//  const mainCategories = JSON.parse(data);
-//  const categories = Object.keys(mainCategories);
-//  const urls = Object.values(mainCategories);
+async function initCategories(categories) {
+  console.log("Initiating Categories.");
+  await Category.distinct("name", async function (error, names) {
+    let createList = [];
+    names.forEach((name) => {
+      if (!categories.includes(name)) {
+        createList.push({ name });
+      }
+    });
+    if (createList.length > 0) {
+      await Category.insertMany(createList, function (errors, docs) {
+        console.log(`Inserted ${createList.length} Categories.`);
+      });
+    } else {
+      console.log("Categories already initiated.");
+    }
+  });
+}
 
-//  const url = urls[0];
-//  console.log("Launch browser ...");
-//  const browser = await puppeteer.launch({
-//    headless: false,
-//    slowMo: 1000,
-//  });
-//  const page = await browser.newPage();
-//  await page.setViewport({
-//    width: 1440,
-//    height: 900,
-//    deviceScaleFactor: 1,
-//  });
-//  page.on("console", (msg) => console.log("PAGE LOG:", msg.text()));
-
-//  console.log("Go to target page ...");
-//  await page.goto(`https://zh.wikipedia.org${url}`);
-
-//  await clickAll(page);
-//  let count = 1;
-//  while (count > 0) {
-//    await page.waitForSelector(".CategoryTreeSection").then(async () => {
-//      count = await page.$$eval(toggleElm, (triggers) => triggers.length);
-//      console.log("new content: ", count);
-//      await new Promise(function (resolve) {
-//        setTimeout(resolve, (count + 1) * 3000);
-//      });
-//      await clickAll(page);
-//    });
-//  }
-
-//  await browser.close();
-//}
+async function clickAll(page) {
+  await page.$$eval(toggleElm, (triggers) => {
+    triggers.forEach(async (t, index) => {
+      await new Promise(function (resolve) {
+        setTimeout(resolve, index * 3000);
+      });
+      const name = t.getAttribute("data-ct-title");
+      console.log(`${name} - ${index + 1}`);
+      await t.click();
+    });
+  });
+}
