@@ -1,10 +1,10 @@
 const mongoose = require("mongoose");
+const puppeteer = require("puppeteer");
 const fs = require("fs").promises;
-const { webpage } = require("./initPuppeteer");
+
 const { Category } = require("./models/category");
 
 const toggleElm = "span.CategoryTreeToggle[title='展開']";
-const sleepTime = 3;
 
 require("dotenv").config();
 
@@ -21,6 +21,8 @@ const host = process.env.MONGO_HOST;
 mongoose.connect(`mongodb://${user}:${pass}@${host}`, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
+  useCreateIndex: true,
+  useFindAndModify: false,
 });
 
 const db = mongoose.connection;
@@ -37,11 +39,25 @@ db.once("open", async function () {
     const urls = Object.values(mainCategories);
 
     // Init Categories
-    const category = new Category();
-    await category.filterInsert(categories);
+    let currentCategory = categories[process.env.URL_INDEX];
+
+    //await category.filterInsert(categories);
 
     // Go to target page
     const url = urls[parseInt(process.env.URL_INDEX)];
+    console.log("Launch browser ...");
+    let option = {
+      headless: false,
+    };
+
+    const browser = await puppeteer.launch(option);
+
+    const webpage = await browser.newPage();
+    await webpage.setViewport({
+      width: 1440,
+      height: 900,
+      deviceScaleFactor: 1,
+    });
     webpage.on("console", (msg) => console.log("PAGE LOG:", msg.text()));
     await webpage.goto(`https://zh.wikipedia.org${url}`);
 
@@ -49,12 +65,13 @@ db.once("open", async function () {
     await clickAll(webpage);
     let count = 1;
     while (count > 0) {
+      await findAllSubs(webpage, currentCategory, currentCategory);
       await webpage.waitForSelector(".CategoryTreeSection").then(async () => {
         count = await webpage.$$eval(toggleElm, (triggers) => triggers.length);
         console.log("All elements need to click: ", count);
         // Sleep before next round
         await new Promise(function (resolve) {
-          setTimeout(resolve, count * (sleepTime * 1000));
+          setTimeout(resolve, count * 1000);
         });
 
         await clickAll(webpage);
@@ -70,12 +87,26 @@ async function clickAll(page) {
     triggers.forEach(async (t, index) => {
       // Sleep between each click
       await new Promise(function (resolve) {
-        setTimeout(resolve, index * (sleepTime * 1000));
+        setTimeout(resolve, index * 3000);
       });
 
-      const name = t.getAttribute("data-ct-title");
-      console.log(`${name} - ${index + 1}`);
       await t.click();
     });
   });
+}
+
+/**
+ * find all subcategories name and urls on the page.
+ */
+async function findAllSubs(page, targetCategory) {
+  let subcategories = await page.$$eval(
+    ".CategoryTreeEmptyBullet + a",
+    (elements) => {
+      return elements.map((e) => {
+        return { name: e.innerHTML, url: e.getAttribute("href") };
+      });
+    }
+  );
+
+  await Category.findOneAndUpdate({ name: targetCategory }, { subcategories });
 }
