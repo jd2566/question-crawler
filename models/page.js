@@ -3,6 +3,7 @@ const { Schema } = mongoose;
 
 const pageSchema = new Schema({
   name: { type: String, unique: true },
+  url: { type: String, unique: true },
 });
 
 const Page = mongoose.model("Page", pageSchema);

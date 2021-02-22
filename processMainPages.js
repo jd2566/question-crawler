@@ -1,9 +1,10 @@
-const puppeteer = require("puppeteer");
 const mongoose = require("mongoose");
 const fs = require("fs").promises;
+const { webpage } = require("./initPuppeteer");
 const { Category } = require("./models/category");
 
 const toggleElm = "span.CategoryTreeToggle[title='展開']";
+const sleepTime = 3;
 
 require("dotenv").config();
 
@@ -29,41 +30,34 @@ db.once("open", async function () {
 
   const mainCategoryFile = "./results/MainCategories.json";
   if (fs.access(mainCategoryFile)) {
+    // Read file
     const data = await fs.readFile(mainCategoryFile, "utf8");
     const mainCategories = JSON.parse(data);
     const categories = Object.keys(mainCategories);
     const urls = Object.values(mainCategories);
 
-    initCategories(categories);
+    // Init Categories
+    const category = new Category();
+    await category.filterInsert(categories);
 
-    const url = urls[0];
+    // Go to target page
+    const url = urls[parseInt(process.env.URL_INDEX)];
+    webpage.on("console", (msg) => console.log("PAGE LOG:", msg.text()));
+    await webpage.goto(`https://zh.wikipedia.org${url}`);
 
-    console.log("Launch browser ...");
-    const browser = await puppeteer.launch({
-      headless: false,
-      slowMo: 1000,
-    });
-    const page = await browser.newPage();
-    await page.setViewport({
-      width: 1440,
-      height: 900,
-      deviceScaleFactor: 1,
-    });
-    page.on("console", (msg) => console.log("PAGE LOG:", msg.text()));
-
-    console.log("Go to target page ...");
-    await page.goto(`https://zh.wikipedia.org${url}`);
-
-    await clickAll(page);
+    // Start processing
+    await clickAll(webpage);
     let count = 1;
     while (count > 0) {
-      await page.waitForSelector(".CategoryTreeSection").then(async () => {
-        count = await page.$$eval(toggleElm, (triggers) => triggers.length);
-        console.log("new content: ", count);
+      await webpage.waitForSelector(".CategoryTreeSection").then(async () => {
+        count = await webpage.$$eval(toggleElm, (triggers) => triggers.length);
+        console.log("All elements need to click: ", count);
+        // Sleep before next round
         await new Promise(function (resolve) {
-          setTimeout(resolve, (count + 1) * 3000);
+          setTimeout(resolve, count * (sleepTime * 1000));
         });
-        await clickAll(page);
+
+        await clickAll(webpage);
       });
     }
 
@@ -71,31 +65,14 @@ db.once("open", async function () {
   }
 });
 
-async function initCategories(categories) {
-  console.log("Initiating Categories.");
-  await Category.distinct("name", async function (error, names) {
-    let createList = [];
-    names.forEach((name) => {
-      if (!categories.includes(name)) {
-        createList.push({ name });
-      }
-    });
-    if (createList.length > 0) {
-      await Category.insertMany(createList, function (errors, docs) {
-        console.log(`Inserted ${createList.length} Categories.`);
-      });
-    } else {
-      console.log("Categories already initiated.");
-    }
-  });
-}
-
 async function clickAll(page) {
   await page.$$eval(toggleElm, (triggers) => {
     triggers.forEach(async (t, index) => {
+      // Sleep between each click
       await new Promise(function (resolve) {
-        setTimeout(resolve, index * 3000);
+        setTimeout(resolve, index * (sleepTime * 1000));
       });
+
       const name = t.getAttribute("data-ct-title");
       console.log(`${name} - ${index + 1}`);
       await t.click();
