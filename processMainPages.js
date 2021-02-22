@@ -6,6 +6,8 @@ const { Category } = require("./models/category");
 
 const toggleElm = "span.CategoryTreeToggle[title='展開']";
 
+const timer = (ms) => new Promise((res) => setTimeout(res, ms));
+
 require("dotenv").config();
 
 process.on("uncaughtException", (err) => {
@@ -41,8 +43,6 @@ db.once("open", async function () {
     // Init Categories
     let currentCategory = categories[process.env.URL_INDEX];
 
-    //await category.filterInsert(categories);
-
     // Go to target page
     const url = urls[parseInt(process.env.URL_INDEX)];
     console.log("Launch browser ...");
@@ -62,28 +62,15 @@ db.once("open", async function () {
     await webpage.goto(`https://zh.wikipedia.org${url}`);
 
     // Start processing
-    await clickAll(webpage);
-    let count = 1;
-    while (count > 0) {
-      await findAllSubs(webpage, currentCategory, currentCategory);
-      await webpage.waitForSelector(".CategoryTreeSection").then(async () => {
-        count = await webpage.$$eval(toggleElm, (triggers) => triggers.length);
-        console.log("All elements need to click: ", count);
-        // Sleep before next round
-        await new Promise(function (resolve) {
-          setTimeout(resolve, count * 1000);
-        });
-
-        await clickAll(webpage);
-      });
-    }
+    await recursiveClick(webpage, currentCategory);
 
     await browser.close();
+    mongoose.disconnect();
   }
 });
 
-async function clickAll(page) {
-  await page.$$eval(toggleElm, (triggers) => {
+async function recursiveClick(page, category) {
+  await page.$$eval(toggleElm, async (triggers) => {
     triggers.forEach(async (t, index) => {
       // Sleep between each click
       await new Promise(function (resolve) {
@@ -93,6 +80,19 @@ async function clickAll(page) {
       await t.click();
     });
   });
+
+  let count = await page.$$eval(toggleElm, (triggers) => triggers.length);
+
+  console.log("All elements need to click: ", count);
+  if (count > 0) {
+    // Sleep before next round
+    await new Promise(function (resolve) {
+      setTimeout(resolve, (count + 1) * 3000);
+    });
+    await recursiveClick(page);
+  } else {
+    await findAllSubs(page, category);
+  }
 }
 
 /**
@@ -107,6 +107,6 @@ async function findAllSubs(page, targetCategory) {
       });
     }
   );
-
+  console.log("Saving new subs...");
   await Category.findOneAndUpdate({ name: targetCategory }, { subcategories });
 }
