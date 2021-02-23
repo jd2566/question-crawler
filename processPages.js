@@ -33,34 +33,55 @@ db.once("open", async function () {
 
   let option = {
     headless: false,
+    devtools: false,
   };
 
   const browser = await puppeteer.launch(option);
 
-  const webpage = await browser.newPage();
+  let webpage = await browser.newPage();
   await webpage.setViewport({
     width: 1440,
     height: 900,
     deviceScaleFactor: 1,
   });
 
-  allCategories.forEach((c) => {
+  for (let index = 0; index < allCategories.length; index++) {
+    const c = allCategories[index];
     console.log(`Category: ${c.name}`);
-    c.subcategories.forEach(async (s, i) => {
-      await timer(i * 5000);
+
+    for (let i = 0; i < c.subcategories.length; i++) {
+      const s = c.subcategories[i];
       console.log(`Subcategory: ${s.name}`);
-      await webpage.goto(`https://zh.wikipedia.org${s.url}`);
-      const pages = await webpage.$$eval(
-        ".mw-content-ltr > ul > li > a",
-        (elements) => {
-          return elements.map((e) => {
-            return { name: e.innerHTML, url: e.getAttribute("href") };
-          });
-        }
-      );
-      console.log(pages);
-    });
-  });
+
+      await webpage.goto(`https://zh.wikipedia.org${c.subcategories[i].url}`);
+
+      c.subcategories[i].pages = await pageInfos(webpage);
+      console.log(c.subcategories[i]);
+      await timer(5000);
+    }
+
+    await c.save();
+  }
 
   mongoose.disconnect();
 });
+
+async function pageInfos(webpage) {
+  return await webpage.$$eval("li:not([id]):not([class]) > a", (elements) => {
+    let infos = [];
+    elements.forEach((element) => {
+      const name = element.innerText;
+      const url = element.getAttribute("href");
+      // filter out Category urls
+      if (
+        !url.includes("Category:") &&
+        !url.includes("Template:") &&
+        !url.includes("User:") &&
+        url != "#"
+      ) {
+        infos.push({ name, url });
+      }
+    });
+    return infos;
+  });
+}

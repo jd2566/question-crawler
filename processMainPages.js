@@ -6,9 +6,8 @@ const { Category } = require("./models/category");
 
 const toggleElm = "span.CategoryTreeToggle[title='展開']";
 
-const timer = (ms) => new Promise((res) => setTimeout(res, ms));
-
 require("dotenv").config();
+require("log-timestamp");
 
 process.on("uncaughtException", (err) => {
   console.error("There was an uncaught error", err);
@@ -48,6 +47,7 @@ db.once("open", async function () {
     console.log("Launch browser ...");
     let option = {
       headless: false,
+      devtools: false,
     };
 
     const browser = await puppeteer.launch(option);
@@ -61,52 +61,95 @@ db.once("open", async function () {
     webpage.on("console", (msg) => console.log("PAGE LOG:", msg.text()));
     await webpage.goto(`https://zh.wikipedia.org${url}`);
 
+    setInterval(async () => {
+      await findAllSubs(webpage, currentCategory, url);
+    }, 5 * 60 * 1000);
+
     // Start processing
-    await recursiveClick(webpage, currentCategory);
+    await recursiveClick(webpage, currentCategory, url);
 
     await browser.close();
     mongoose.disconnect();
   }
 });
 
-async function recursiveClick(page, category) {
+async function recursiveClick(page, category, currentUrl) {
   await page.$$eval(toggleElm, async (triggers) => {
-    triggers.forEach(async (t, index) => {
-      // Sleep between each click
-      await new Promise(function (resolve) {
-        setTimeout(resolve, index * 3000);
-      });
+    for (let i = 0; i < triggers.length; i++) {
+      const t = triggers[i];
 
       await t.click();
-    });
+
+      await new Promise(function (resolve) {
+        setTimeout(resolve, 1500);
+      });
+    }
   });
 
   let count = await page.$$eval(toggleElm, (triggers) => triggers.length);
 
   console.log("All elements need to click: ", count);
   if (count > 0) {
-    // Sleep before next round
-    await new Promise(function (resolve) {
-      setTimeout(resolve, (count + 1) * 3000);
-    });
     await recursiveClick(page);
   } else {
-    await findAllSubs(page, category);
+    await findAllSubs(page, category, currentUrl);
   }
 }
 
 /**
  * find all subcategories name and urls on the page.
  */
-async function findAllSubs(page, targetCategory) {
-  let subcategories = await page.$$eval(
-    ".CategoryTreeEmptyBullet + a",
-    (elements) => {
-      return elements.map((e) => {
-        return { name: e.innerHTML, url: e.getAttribute("href") };
-      });
+async function findAllSubs(page, targetCategory, currentUrl) {
+  let subcategories = await page.$$eval(".CategoryTreeItem > a", (elements) => {
+    let subs = [];
+    for (let i = 0; i < elements.length; i++) {
+      const e = elements[i];
+      const spanText = e.nextElementSibling.innerText;
+
+      if (spanText.includes("頁面")) {
+        subs.push({ name: e.innerHTML, url: e.getAttribute("href") });
+      }
     }
-  );
-  console.log("Saving new subs...");
-  await Category.findOneAndUpdate({ name: targetCategory }, { subcategories });
+
+    return subs;
+  });
+
+  const categoryPages = await pageInfos(page);
+  const subLength = subcategories.unshift({
+    name: targetCategory,
+    url: currentUrl,
+    pages: categoryPages,
+  });
+  console.log(`Saving total ${subLength} subs...`);
+  try {
+    await Category.findOneAndUpdate(
+      { name: targetCategory },
+      { subcategories }
+    );
+  } catch (error) {
+    console.log(error);
+  }
+}
+
+/**
+ * find all subcategories name and urls on the page.
+ */
+async function pageInfos(webpage) {
+  return await webpage.$$eval("li:not([id]):not([class]) > a", (elements) => {
+    let infos = [];
+    elements.forEach((element) => {
+      const name = element.innerText;
+      const url = element.getAttribute("href");
+      // filter out Category urls
+      if (
+        !url.includes("Category:") &&
+        !url.includes("Template:") &&
+        !url.includes("User:") &&
+        !url.includes("#")
+      ) {
+        infos.push({ name, url });
+      }
+    });
+    return infos;
+  });
 }
